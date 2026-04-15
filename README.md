@@ -139,10 +139,7 @@ let response = try await mgmt.assets.upload(
     alt: "Sunset over the ocean"
 )
 let asset = response.value
-print(asset.id, asset.url ?? "")
-
-// Construct the public URL for rendering (no network call):
-let displayURL = client.assets.fileUrl(id: asset.id)
+print(asset.id)
 
 // Replace the underlying file later:
 let v2Data = newImage.jpegData(compressionQuality: 0.9)!
@@ -159,6 +156,33 @@ let downloaded = try await mgmt.assets.downloadFile(id: asset.id)
 let bytes = downloaded.value          // Data
 let mime = downloaded.headers["content-type"] ?? "application/octet-stream"
 ```
+
+### Public display URLs
+
+Forme separates the Delivery and Management hosts (e.g.
+`https://delivery.forme.sh` vs `https://management.forme.sh`).
+`assets.fileUrl(id:)` builds a URL relative to its client's `baseURL`, so
+**call it on a delivery-configured client**, or pass an explicit
+`baseURL:` override:
+
+```swift
+// Idiomatic — separate client per host:
+let delivery = FormeClient(
+    apiKey: "ce_read_...",
+    baseURL: URL(string: "https://delivery.forme.sh")!
+)
+let displayURL = delivery.assets.fileUrl(id: asset.id)
+// → https://delivery.forme.sh/delivery/assets/<id>/file
+
+// Or, from a management-configured client, pass the delivery host:
+let displayURL2 = mgmt.assets.fileUrl(
+    id: asset.id,
+    baseURL: URL(string: "https://delivery.forme.sh")!
+)
+```
+
+Calling `mgmt.assets.fileUrl(id:)` without an override will produce a URL
+on the management host, which **will not resolve to a public asset**.
 
 ## Optimistic concurrency (ETag / If-Match)
 

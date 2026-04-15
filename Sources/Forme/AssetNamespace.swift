@@ -175,11 +175,28 @@ public struct AssetNamespace: Sendable {
     /// Construct the public download URL for an asset's binary file
     /// (Delivery API). Pure URL builder — no network call.
     ///
+    /// `baseURL` defaults to the client's configured `baseURL`, which is
+    /// only correct when the client is configured against the **Delivery**
+    /// host (e.g. `https://delivery.forme.sh`). If the client is configured
+    /// against the Management host, pass the delivery host explicitly:
+    ///
+    /// ```swift
+    /// // Idiomatic — separate clients per host:
+    /// let url = delivery.assets.fileUrl(id: assetId)
+    ///
+    /// // Or, when working from a single management-configured client:
+    /// let url = mgmt.assets.fileUrl(
+    ///     id: assetId,
+    ///     baseURL: URL(string: "https://delivery.forme.sh")!
+    /// )
+    /// ```
+    ///
     /// Use this when rendering an `<img>`-style URL in a UI; use
     /// `downloadFile(id:)` (Management API) when you need the raw bytes
     /// in-process.
-    public func fileUrl(id: String) -> URL {
-        client.configuration.baseURL.appendingRelative(
+    public func fileUrl(id: String, baseURL: URL? = nil) -> URL {
+        let host = baseURL ?? client.configuration.baseURL
+        return host.appendingRelative(
             "/delivery/assets/\(encodePathComponent(id))/file"
         )
     }

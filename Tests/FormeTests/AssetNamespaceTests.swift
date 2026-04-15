@@ -316,4 +316,33 @@ struct AssetNamespaceTests {
         #expect(url.absoluteString == "https://delivery.forme.sh/delivery/assets/a-1/file")
         #expect(transport.lastRequest == nil) // no network
     }
+
+    @Test func fileUrlAcceptsExplicitBaseURLOverrideForManagementClient() {
+        // Admin-UI flow: caller has only a management-configured client but
+        // needs to render a public asset URL. Pass the delivery host
+        // explicitly to override the management baseURL.
+        let transport = MockTransport()
+        let mgmt = makeTestClient(
+            transport: transport,
+            baseURL: URL(string: "https://management.forme.sh")!
+        )
+        let url = mgmt.assets.fileUrl(
+            id: "a-1",
+            baseURL: URL(string: "https://delivery.forme.sh")!
+        )
+        #expect(url.absoluteString == "https://delivery.forme.sh/delivery/assets/a-1/file")
+    }
+
+    @Test func fileUrlOnManagementClientWithoutOverrideUsesManagementHost() {
+        // Documenting the (incorrect-for-public-display) default behavior so
+        // a regression that quietly redirects this elsewhere will fail
+        // CI with a clear diff.
+        let transport = MockTransport()
+        let mgmt = makeTestClient(
+            transport: transport,
+            baseURL: URL(string: "https://management.forme.sh")!
+        )
+        let url = mgmt.assets.fileUrl(id: "a-1")
+        #expect(url.absoluteString == "https://management.forme.sh/delivery/assets/a-1/file")
+    }
 }
