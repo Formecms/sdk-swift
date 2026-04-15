@@ -44,6 +44,30 @@ struct FormeErrorTests {
         #expect(desc.contains("title"))
     }
 
+    @Test func cancelledErrorDescription() {
+        let err = FormeError.cancelled
+        #expect(err.errorDescription == "Request was cancelled")
+    }
+
+    @Test func mapURLSessionErrorMapsCancellationToFormeError() {
+        // SwiftUI-driven apps cancel tasks when a view disappears. URLSession
+        // surfaces this as NSURLErrorCancelled in NSURLErrorDomain. The SDK
+        // must translate that to FormeError.cancelled so callers can branch.
+        let cancelled = NSError(domain: NSURLErrorDomain, code: NSURLErrorCancelled)
+        guard case .cancelled = mapURLSessionError(cancelled) else {
+            Issue.record("Expected .cancelled")
+            return
+        }
+    }
+
+    @Test func mapURLSessionErrorMapsOtherErrorsToNetwork() {
+        let timeout = NSError(domain: NSURLErrorDomain, code: NSURLErrorTimedOut)
+        guard case .network = mapURLSessionError(timeout) else {
+            Issue.record("Expected .network")
+            return
+        }
+    }
+
     @Test func apiErrorDecodesValidationDetails() throws {
         let json = """
         {

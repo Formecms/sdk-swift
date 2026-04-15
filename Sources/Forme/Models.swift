@@ -3,42 +3,131 @@ import Foundation
 // MARK: - Pagination
 
 /// A paginated list of items returned by list endpoints.
+///
+/// The custom decoder accepts every shape the Forme API returns:
+/// - Delivery API: `{ items, total, limit, offset }`
+/// - Management API (paginated): `{ data, pagination: { total, limit, offset } }`
+/// - Management API (unpaginated, e.g. environments / locales / api-keys):
+///   `{ data }` — `total = data.count`, `limit = data.count`, `offset = 0`
+///
+/// The public surface (`items`, `total`, `limit`, `offset`) is identical
+/// across all three.
 public struct PaginatedList<Item: Sendable & Decodable>: Sendable, Decodable {
     public let items: [Item]
     public let total: Int
     public let limit: Int
     public let offset: Int
+
+    public init(items: [Item], total: Int, limit: Int, offset: Int) {
+        self.items = items
+        self.total = total
+        self.limit = limit
+        self.offset = offset
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case items, total, limit, offset, data, pagination
+    }
+
+    private struct Pagination: Decodable {
+        let total: Int
+        let limit: Int
+        let offset: Int
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+
+        // Delivery shape: { items, total, limit, offset }
+        if let items = try container.decodeIfPresent([Item].self, forKey: .items) {
+            self.items = items
+            self.total = try container.decode(Int.self, forKey: .total)
+            self.limit = try container.decode(Int.self, forKey: .limit)
+            self.offset = try container.decode(Int.self, forKey: .offset)
+            return
+        }
+
+        // Management shape: { data, pagination? }
+        let data = try container.decode([Item].self, forKey: .data)
+        if let pag = try container.decodeIfPresent(Pagination.self, forKey: .pagination) {
+            self.items = data
+            self.total = pag.total
+            self.limit = pag.limit
+            self.offset = pag.offset
+        } else {
+            // Unpaginated Management list — synthesize sensible totals.
+            self.items = data
+            self.total = data.count
+            self.limit = data.count
+            self.offset = 0
+        }
+    }
 }
 
-/// Management API returns lists as `{data, pagination}` envelope.
-public struct ManagementList<Item: Sendable & Decodable>: Sendable, Decodable {
-    public let data: [Item]
-    public let pagination: Pagination
+// MARK: - Delivery includes
 
-    public struct Pagination: Sendable, Decodable {
-        public let total: Int
-        public let limit: Int
-        public let offset: Int
-    }
+/// Linked entries and assets that the Delivery API returns alongside an
+/// entry list when `?include=1` (or higher) is passed. Each linked entity
+/// is fully decoded — same shape as its top-level counterpart.
+public struct DeliveryIncludes: Sendable, Decodable {
+    public let entries: [Entry]
+    public let assets: [Asset]
 
-    /// Convert to the `PaginatedList` shape for a uniform public API.
-    var asPaginated: PaginatedList<Item> {
-        // Keeping this as an internal helper — callers see `PaginatedList` only.
-        fatalError("Use ManagementList.toPaginated()")
-    }
-
-    func toPaginated() -> PaginatedListMgmt<Item> {
-        PaginatedListMgmt(items: data, total: pagination.total, limit: pagination.limit, offset: pagination.offset)
+    public init(entries: [Entry] = [], assets: [Asset] = []) {
+        self.entries = entries
+        self.assets = assets
     }
 }
 
-/// Public paginated shape for Management responses (same fields as
-/// `PaginatedList` but constructed from the `{data, pagination}` envelope).
-public struct PaginatedListMgmt<Item: Sendable & Decodable>: Sendable {
-    public let items: [Item]
+/// Delivery entry-list response with an optional `includes` payload.
+///
+/// Accessed via `client.entries.listDelivery(include: 1)`. When
+/// `include` is omitted (or zero), `includes` is `nil` and only `items`
+/// is meaningful.
+public struct DeliveryEntryListResponse: Sendable, Decodable {
+    public let items: [Entry]
     public let total: Int
     public let limit: Int
     public let offset: Int
+    public let includes: DeliveryIncludes?
+
+    public init(
+        items: [Entry],
+        total: Int,
+        limit: Int,
+        offset: Int,
+        includes: DeliveryIncludes? = nil
+    ) {
+        self.items = items
+        self.total = total
+        self.limit = limit
+        self.offset = offset
+        self.includes = includes
+    }
+}
+
+/// Delivery single-entry response with optional `includes` payload.
+public struct DeliveryEntryResponse: Sendable, Decodable {
+    public let entry: Entry
+    public let includes: DeliveryIncludes?
+
+    public init(entry: Entry, includes: DeliveryIncludes? = nil) {
+        self.entry = entry
+        self.includes = includes
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case includes
+    }
+
+    public init(from decoder: Decoder) throws {
+        // The single-entry endpoint returns the entry as the top-level
+        // object with an optional sibling `includes` field. Decode the
+        // entry from the same container and lift `includes` out separately.
+        self.entry = try Entry(from: decoder)
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.includes = try container.decodeIfPresent(DeliveryIncludes.self, forKey: .includes)
+    }
 }
 
 // MARK: - Content Model
@@ -150,6 +239,16 @@ public struct ContentModelRef: Sendable, Decodable {
     public let apiId: String
 }
 
+/// A snapshot of an entry's fields at publish time.
+public struct EntryVersion: Sendable, Decodable {
+    public let id: String
+    public let entryId: String
+    public let version: Int
+    public let fields: [String: FormeValue]
+    public let publishedAt: Date
+    public let sys: Entry.Sys?
+}
+
 // MARK: - Asset
 
 public struct Asset: Sendable, Decodable {
@@ -171,6 +270,20 @@ public struct Asset: Sendable, Decodable {
     public let createdAt: Date
     public let updatedAt: Date
     public let sys: Entry.Sys?
+}
+
+/// A snapshot of an asset's metadata at publish time.
+public struct AssetVersion: Sendable, Decodable {
+    public let id: String
+    public let assetId: String
+    public let version: Int
+    public let filename: String
+    public let mimeType: String
+    public let sizeBytes: Int64
+    public let title: String?
+    public let description: String?
+    public let alt: String?
+    public let publishedAt: Date
 }
 
 // MARK: - Environment
@@ -351,5 +464,14 @@ public struct UpdateLocaleInput: Sendable, Encodable {
         self.name = name
         self.isDefault = isDefault
         self.fallbackLocaleId = fallbackLocaleId
+    }
+}
+
+/// Input for updating workspace metadata.
+public struct UpdateWorkspaceInput: Sendable, Encodable {
+    public let name: String
+
+    public init(name: String) {
+        self.name = name
     }
 }

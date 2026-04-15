@@ -15,7 +15,7 @@ public struct EntryNamespace: Sendable {
         fields: [String: FieldFilter]? = nil,
         limit: Int = 25,
         offset: Int = 0
-    ) async throws -> PaginatedListMgmt<Entry> {
+    ) async throws -> FormeResponse<PaginatedList<Entry>> {
         var params: [String: QueryValue] = [
             "limit": .int(limit),
             "offset": .int(offset),
@@ -25,27 +25,36 @@ public struct EntryNamespace: Sendable {
         if let loc = locale ?? client.configuration.defaultLocale { params["locale"] = .string(loc) }
         if let fields = fields { params["fields"] = .fields(fields) }
 
-        let envelope: ManagementList<Entry> = try await client.executor.get(
+        let response: FormeResponse<PaginatedList<Entry>> = try await client.executor.get(
             "/management/entries\(buildQuery(params))"
         )
-        return envelope.toPaginated()
+        return response
     }
 
     /// Get a single entry by id (Management API).
-    public func get(id: String, locale: String? = nil) async throws -> Entry {
+    public func get(id: String, locale: String? = nil) async throws -> FormeResponse<Entry> {
         var params: [String: QueryValue] = [:]
         if let loc = locale ?? client.configuration.defaultLocale { params["locale"] = .string(loc) }
-        return try await client.executor.get("/management/entries/\(id)\(buildQuery(params))")
+        return try await client.executor.get("/management/entries/\(encodePathComponent(id))\(buildQuery(params))")
     }
 
     /// Create a new entry (Management API).
-    public func create(_ input: CreateEntryInput) async throws -> Entry {
+    public func create(_ input: CreateEntryInput) async throws -> FormeResponse<Entry> {
         try await client.executor.post("/management/entries", body: input)
     }
 
     /// Fully replace an entry's fields (PUT). For partial updates prefer `patch(...)`.
-    public func update(id: String, _ input: UpdateEntryInput) async throws -> Entry {
-        try await client.executor.put("/management/entries/\(id)", body: input)
+    /// Pass `ifMatch` with an ETag from a prior response for optimistic concurrency.
+    public func update(
+        id: String,
+        _ input: UpdateEntryInput,
+        ifMatch: String? = nil
+    ) async throws -> FormeResponse<Entry> {
+        try await client.executor.put(
+            "/management/entries/\(encodePathComponent(id))",
+            body: input,
+            ifMatch: ifMatch
+        )
     }
 
     /// Partially update an entry's fields (PATCH — shallow merge).
@@ -62,11 +71,11 @@ public struct EntryNamespace: Sendable {
         _ input: PatchEntryInput,
         locale: String? = nil,
         ifMatch: String? = nil
-    ) async throws -> Entry {
+    ) async throws -> FormeResponse<Entry> {
         var params: [String: QueryValue] = [:]
         if let loc = locale { params["locale"] = .string(loc) }
         return try await client.executor.patch(
-            "/management/entries/\(id)\(buildQuery(params))",
+            "/management/entries/\(encodePathComponent(id))\(buildQuery(params))",
             body: input,
             ifMatch: ifMatch
         )
@@ -74,22 +83,41 @@ public struct EntryNamespace: Sendable {
 
     /// Delete an entry (Management API).
     public func delete(id: String) async throws {
-        try await client.executor.delete("/management/entries/\(id)")
+        try await client.executor.delete("/management/entries/\(encodePathComponent(id))")
     }
 
     /// Publish an entry (Management API).
-    public func publish(id: String) async throws -> Entry {
-        try await client.executor.postEmpty("/management/entries/\(id)/publish")
+    public func publish(id: String) async throws -> FormeResponse<Entry> {
+        try await client.executor.postEmpty("/management/entries/\(encodePathComponent(id))/publish")
     }
 
     /// Unpublish an entry (Management API).
-    public func unpublish(id: String) async throws -> Entry {
-        try await client.executor.postEmpty("/management/entries/\(id)/unpublish")
+    public func unpublish(id: String) async throws -> FormeResponse<Entry> {
+        try await client.executor.postEmpty("/management/entries/\(encodePathComponent(id))/unpublish")
+    }
+
+    /// List version snapshots for an entry (Management API).
+    /// Each version is a frozen copy of the entry's fields at publish time.
+    public func versions(
+        id: String,
+        limit: Int = 25,
+        offset: Int = 0
+    ) async throws -> FormeResponse<PaginatedList<EntryVersion>> {
+        let params: [String: QueryValue] = [
+            "limit": .int(limit),
+            "offset": .int(offset),
+        ]
+        return try await client.executor.get(
+            "/management/entries/\(encodePathComponent(id))/versions\(buildQuery(params))"
+        )
     }
 
     // MARK: - Delivery API
 
     /// List published entries (Delivery API).
+    ///
+    /// When `include` is `>= 1`, the response includes the `includes` payload
+    /// with linked entries and assets — see `DeliveryListResponse.includes`.
     public func listDelivery(
         contentModelId: String? = nil,
         locale: String? = nil,
@@ -97,7 +125,7 @@ public struct EntryNamespace: Sendable {
         include: Int? = nil,
         limit: Int = 25,
         offset: Int = 0
-    ) async throws -> PaginatedList<Entry> {
+    ) async throws -> FormeResponse<DeliveryEntryListResponse> {
         var params: [String: QueryValue] = [
             "limit": .int(limit),
             "offset": .int(offset),
@@ -111,14 +139,17 @@ public struct EntryNamespace: Sendable {
     }
 
     /// Get a single published entry by id (Delivery API).
+    ///
+    /// When `include` is `>= 1`, the response includes the `includes` payload
+    /// with linked entries and assets.
     public func getDelivery(
         id: String,
         locale: String? = nil,
         include: Int? = nil
-    ) async throws -> Entry {
+    ) async throws -> FormeResponse<DeliveryEntryResponse> {
         var params: [String: QueryValue] = [:]
         if let loc = locale ?? client.configuration.defaultLocale { params["locale"] = .string(loc) }
         if let include = include { params["include"] = .int(include) }
-        return try await client.executor.get("/delivery/entries/\(id)\(buildQuery(params))")
+        return try await client.executor.get("/delivery/entries/\(encodePathComponent(id))\(buildQuery(params))")
     }
 }

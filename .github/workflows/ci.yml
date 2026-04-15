@@ -44,3 +44,12 @@ jobs:
           swift build -c debug \
             -Xswiftc -strict-concurrency=complete \
             -Xswiftc -warnings-as-errors
+
+      # Tests must hold the same strict-concurrency / warnings-as-errors bar
+      # as the library, otherwise Sendable bugs in test-only helpers ship
+      # to users via @testable import.
+      - name: Run tests with strict concurrency
+        run: |
+          swift test --parallel \
+            -Xswiftc -strict-concurrency=complete \
+            -Xswiftc -warnings-as-errors

@@ -11,32 +11,37 @@ public struct ContentModelNamespace: Sendable {
         limit: Int = 25,
         offset: Int = 0,
         apiId: String? = nil
-    ) async throws -> PaginatedListMgmt<ContentModel> {
+    ) async throws -> FormeResponse<PaginatedList<ContentModel>> {
         var params: [String: QueryValue] = [
             "limit": .int(limit),
             "offset": .int(offset),
         ]
         if let apiId = apiId { params["apiId"] = .string(apiId) }
-        let envelope: ManagementList<ContentModel> = try await client.executor.get(
+        return try await client.executor.get(
             "/management/content-models\(buildQuery(params))"
         )
-        return envelope.toPaginated()
     }
 
-    public func get(id: String) async throws -> ContentModel {
-        try await client.executor.get("/management/content-models/\(id)")
+    public func get(id: String) async throws -> FormeResponse<ContentModel> {
+        try await client.executor.get("/management/content-models/\(encodePathComponent(id))")
     }
 
-    public func create(_ input: CreateContentModelInput) async throws -> ContentModel {
+    public func create(_ input: CreateContentModelInput) async throws -> FormeResponse<ContentModel> {
         try await client.executor.post("/management/content-models", body: input)
     }
 
-    public func update(id: String, _ input: UpdateContentModelInput) async throws -> ContentModel {
-        try await client.executor.put("/management/content-models/\(id)", body: input)
+    public func update(
+        id: String,
+        _ input: UpdateContentModelInput
+    ) async throws -> FormeResponse<ContentModel> {
+        try await client.executor.put(
+            "/management/content-models/\(encodePathComponent(id))",
+            body: input
+        )
     }
 
     public func delete(id: String) async throws {
-        try await client.executor.delete("/management/content-models/\(id)")
+        try await client.executor.delete("/management/content-models/\(encodePathComponent(id))")
     }
 
     // MARK: - Delivery API
@@ -44,7 +49,7 @@ public struct ContentModelNamespace: Sendable {
     public func listDelivery(
         limit: Int = 25,
         offset: Int = 0
-    ) async throws -> PaginatedList<ContentModel> {
+    ) async throws -> FormeResponse<PaginatedList<ContentModel>> {
         let params: [String: QueryValue] = [
             "limit": .int(limit),
             "offset": .int(offset),
@@ -52,7 +57,7 @@ public struct ContentModelNamespace: Sendable {
         return try await client.executor.get("/delivery/content-models\(buildQuery(params))")
     }
 
-    public func getDelivery(id: String) async throws -> ContentModel {
-        try await client.executor.get("/delivery/content-models/\(id)")
+    public func getDelivery(id: String) async throws -> FormeResponse<ContentModel> {
+        try await client.executor.get("/delivery/content-models/\(encodePathComponent(id))")
     }
 }

@@ -4,10 +4,6 @@ import Foundation
 public struct APIKeyNamespace: Sendable {
     let client: FormeClient
 
-    private struct EnvelopeUnpaginated: Decodable {
-        let data: [APIKey]
-    }
-
     public struct CreateKeyInput: Sendable, Encodable {
         public let keyType: String
         public let label: String?
@@ -34,17 +30,18 @@ public struct APIKeyNamespace: Sendable {
         public let updatedAt: Date
     }
 
-    public func list() async throws -> [APIKey] {
-        let envelope: EnvelopeUnpaginated = try await client.executor.get("/management/api-keys")
-        return envelope.data
+    public func list() async throws -> FormeResponse<[APIKey]> {
+        let response: FormeResponse<PaginatedList<APIKey>> =
+            try await client.executor.get("/management/api-keys")
+        return response.map(\.items)
     }
 
-    public func create(_ input: CreateKeyInput) async throws -> CreatedAPIKey {
+    public func create(_ input: CreateKeyInput) async throws -> FormeResponse<CreatedAPIKey> {
         try await client.executor.post("/management/api-keys", body: input)
     }
 
     /// Revoke an API key. The server returns 204 No Content.
     public func revoke(id: String) async throws {
-        try await client.executor.delete("/management/api-keys/\(id)")
+        try await client.executor.delete("/management/api-keys/\(encodePathComponent(id))")
     }
 }

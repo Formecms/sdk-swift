@@ -38,10 +38,10 @@ struct ContentModelNamespaceTests {
         )
         let client = makeTestClient(transport: transport)
 
-        let result = try await client.contentModels.list()
-        #expect(result.items.count == 1)
-        #expect(result.items.first?.apiId == "blogPost")
-        #expect(result.items.first?.fields.count == 2)
+        let response = try await client.contentModels.list()
+        #expect(response.value.items.count == 1)
+        #expect(response.value.items.first?.apiId == "blogPost")
+        #expect(response.value.items.first?.fields.count == 2)
     }
 
     @Test func getReturnsModel() async throws {
@@ -49,10 +49,10 @@ struct ContentModelNamespaceTests {
         transport.enqueue(.raw(sampleModelJSON()))
         let client = makeTestClient(transport: transport)
 
-        let model = try await client.contentModels.get(id: "cm-1")
-        #expect(model.apiId == "blogPost")
-        #expect(model.fields.first?.apiId == "slug")
-        #expect(model.fields.first?.required == true)
+        let response = try await client.contentModels.get(id: "cm-1")
+        #expect(response.value.apiId == "blogPost")
+        #expect(response.value.fields.first?.apiId == "slug")
+        #expect(response.value.fields.first?.required == true)
     }
 
     @Test func fieldDefPreservesUnknownKeysInExtra() async throws {
@@ -60,8 +60,8 @@ struct ContentModelNamespaceTests {
         transport.enqueue(.raw(sampleModelJSON()))
         let client = makeTestClient(transport: transport)
 
-        let model = try await client.contentModels.get(id: "cm-1")
-        let titleField = try #require(model.fields.first { $0.apiId == "title" })
+        let response = try await client.contentModels.get(id: "cm-1")
+        let titleField = try #require(response.value.fields.first { $0.apiId == "title" })
         // `localized` is a stable key — consumed directly
         #expect(titleField.localized == true)
     }
@@ -83,8 +83,8 @@ struct ContentModelNamespaceTests {
             name: "Blog Post",
             fields: [field]
         )
-        let model = try await client.contentModels.create(input)
-        #expect(model.apiId == "blogPost")
+        let response = try await client.contentModels.create(input)
+        #expect(response.value.apiId == "blogPost")
 
         let request = try #require(transport.lastRequest)
         #expect(request.httpMethod == "POST")

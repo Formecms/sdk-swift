@@ -43,10 +43,10 @@ struct EntryNamespaceTests {
         transport.enqueue(.raw(envelope))
 
         let client = makeTestClient(transport: transport)
-        let result = try await client.entries.list(contentModelId: "cm-1", limit: 25)
+        let response = try await client.entries.list(contentModelId: "cm-1", limit: 25)
 
-        #expect(result.items.count == 1)
-        #expect(result.total == 1)
+        #expect(response.value.items.count == 1)
+        #expect(response.value.total == 1)
 
         let request = try #require(transport.lastRequest)
         #expect(request.httpMethod == "GET")
@@ -82,10 +82,31 @@ struct EntryNamespaceTests {
         transport.enqueue(.raw(sampleEntryJSON(id: "abc", slug: "hello")))
         let client = makeTestClient(transport: transport)
 
-        let entry = try await client.entries.get(id: "abc")
+        let response = try await client.entries.get(id: "abc")
 
-        #expect(entry.id == "abc")
-        #expect(entry.fields["slug"]?.stringValue == "hello")
+        #expect(response.value.id == "abc")
+        #expect(response.value.fields["slug"]?.stringValue == "hello")
+    }
+
+    @Test func getExposesEtagOnSuccess() async throws {
+        let transport = MockTransport()
+        transport.enqueue(
+            .init(
+                statusCode: 200,
+                body: sampleEntryJSON().data(using: .utf8)!,
+                headers: ["etag": "\"7\"", "Content-Type": "application/json"]
+            )
+        )
+        let client = makeTestClient(transport: transport)
+
+        let response = try await client.entries.get(id: "abc")
+
+        // ETag (and full headers map, status) must be available so callers
+        // can drive the GET → PATCH-with-If-Match concurrency flow.
+        #expect(response.etag == "\"7\"")
+        #expect(response.status == 200)
+        #expect(response.headers["etag"] == "\"7\"")
+        #expect(response.headers["content-type"] == "application/json")
     }
 
     // MARK: - Create
@@ -99,9 +120,9 @@ struct EntryNamespaceTests {
             contentModelId: "cm-1",
             fields: ["slug": .string("new-slug"), "title": .object(["en-US": .string("New")])]
         )
-        let entry = try await client.entries.create(input)
+        let response = try await client.entries.create(input)
 
-        #expect(entry.id == "new")
+        #expect(response.value.id == "new")
 
         let request = try #require(transport.lastRequest)
         #expect(request.httpMethod == "POST")
@@ -118,15 +139,33 @@ struct EntryNamespaceTests {
         let client = makeTestClient(transport: transport)
 
         let input = PatchEntryInput(fields: ["slug": .string("updated-slug")])
-        let entry = try await client.entries.patch(id: "abc", input)
+        let response = try await client.entries.patch(id: "abc", input)
 
-        #expect(entry.fields["slug"]?.stringValue == "updated-slug")
+        #expect(response.value.fields["slug"]?.stringValue == "updated-slug")
 
         let request = try #require(transport.lastRequest)
         #expect(request.httpMethod == "PATCH")
         #expect(
             request.value(forHTTPHeaderField: "Content-Type") == "application/merge-patch+json"
         )
+    }
+
+    @Test func patchExposesEtagOnSuccess() async throws {
+        let transport = MockTransport()
+        transport.enqueue(
+            .init(
+                statusCode: 200,
+                body: sampleEntryJSON().data(using: .utf8)!,
+                headers: ["etag": "\"42\""]
+            )
+        )
+        let client = makeTestClient(transport: transport)
+
+        let response = try await client.entries.patch(
+            id: "abc",
+            PatchEntryInput(fields: ["slug": .string("x")])
+        )
+        #expect(response.etag == "\"42\"")
     }
 
     @Test func patchForwardsIfMatchHeader() async throws {
@@ -137,11 +176,11 @@ struct EntryNamespaceTests {
         _ = try await client.entries.patch(
             id: "abc",
             PatchEntryInput(fields: ["slug": .string("x")]),
-            ifMatch: "W/\"abc-etag\""
+            ifMatch: "\"1\""
         )
 
         let request = try #require(transport.lastRequest)
-        #expect(request.value(forHTTPHeaderField: "If-Match") == "W/\"abc-etag\"")
+        #expect(request.value(forHTTPHeaderField: "If-Match") == "\"1\"")
     }
 
     @Test func patch412MapsToPreconditionFailedError() async throws {
@@ -152,17 +191,22 @@ struct EntryNamespaceTests {
                 body: """
                 {"error": {"code": "PRECONDITION_FAILED", "message": "stale"}}
                 """.data(using: .utf8)!,
-                headers: ["etag": "W/\"current\""]
+                headers: ["etag": "\"current\""]
             )
         )
         let client = makeTestClient(transport: transport)
 
-        await #expect(throws: FormeError.self) {
+        do {
             _ = try await client.entries.patch(
                 id: "abc",
                 PatchEntryInput(fields: ["slug": .string("x")]),
-                ifMatch: "W/\"stale\""
+                ifMatch: "\"stale\""
             )
+            Issue.record("Expected preconditionFailed error")
+        } catch FormeError.preconditionFailed(let etag) {
+            #expect(etag == "\"current\"")
+        } catch {
+            Issue.record("Wrong error: \(error)")
         }
     }
 
@@ -179,6 +223,31 @@ struct EntryNamespaceTests {
 
         let url = try #require(transport.lastRequest?.url?.absoluteString)
         #expect(url.contains("locale=*") || url.contains("locale=%2A"))
+    }
+
+    // MARK: - Update (PUT) ETag
+
+    @Test func updateForwardsIfMatchAndExposesEtag() async throws {
+        let transport = MockTransport()
+        transport.enqueue(
+            .init(
+                statusCode: 200,
+                body: sampleEntryJSON().data(using: .utf8)!,
+                headers: ["etag": "\"3\""]
+            )
+        )
+        let client = makeTestClient(transport: transport)
+
+        let response = try await client.entries.update(
+            id: "abc",
+            UpdateEntryInput(fields: ["slug": .string("v2")]),
+            ifMatch: "\"2\""
+        )
+        #expect(response.etag == "\"3\"")
+
+        let request = try #require(transport.lastRequest)
+        #expect(request.httpMethod == "PUT")
+        #expect(request.value(forHTTPHeaderField: "If-Match") == "\"2\"")
     }
 
     // MARK: - Delete
@@ -209,6 +278,37 @@ struct EntryNamespaceTests {
         #expect(url.contains("/publish"))
     }
 
+    // MARK: - Versions
+
+    @Test func versionsReturnsPaginatedListAndUsesCorrectPath() async throws {
+        let transport = MockTransport()
+        transport.enqueue(
+            .raw("""
+            {
+                "data": [
+                    {
+                        "id": "v-1",
+                        "entryId": "abc",
+                        "version": 1,
+                        "fields": {"slug": "v1"},
+                        "publishedAt": "\(nowISO())"
+                    }
+                ],
+                "pagination": {"total": 1, "limit": 25, "offset": 0}
+            }
+            """)
+        )
+        let client = makeTestClient(transport: transport)
+
+        let response = try await client.entries.versions(id: "abc", limit: 25)
+        #expect(response.value.items.count == 1)
+        #expect(response.value.items.first?.version == 1)
+        #expect(response.value.items.first?.entryId == "abc")
+
+        let url = try #require(transport.lastRequest?.url?.absoluteString)
+        #expect(url.contains("/management/entries/abc/versions"))
+    }
+
     // MARK: - Delivery API
 
     @Test func listDeliveryUsesDeliveryPath() async throws {
@@ -224,13 +324,78 @@ struct EntryNamespaceTests {
         transport.enqueue(.raw(deliveryEnvelope))
         let client = makeTestClient(transport: transport)
 
-        let result = try await client.entries.listDelivery()
+        let response = try await client.entries.listDelivery()
 
-        #expect(result.items.count == 1)
-        #expect(result.total == 1)
+        #expect(response.value.items.count == 1)
+        #expect(response.value.total == 1)
+        #expect(response.value.includes == nil) // no ?include=1
 
         let url = try #require(transport.lastRequest?.url?.absoluteString)
         #expect(url.contains("/delivery/entries"))
+    }
+
+    @Test func listDeliveryDecodesIncludesPayloadWhenIncludeRequested() async throws {
+        let transport = MockTransport()
+        let envelope = """
+        {
+            "items": [\(sampleEntryJSON(id: "post-1"))],
+            "total": 1,
+            "limit": 25,
+            "offset": 0,
+            "includes": {
+                "entries": [\(sampleEntryJSON(id: "linked-entry"))],
+                "assets": []
+            }
+        }
+        """
+        transport.enqueue(.raw(envelope))
+        let client = makeTestClient(transport: transport)
+
+        let response = try await client.entries.listDelivery(include: 1)
+
+        #expect(response.value.items.first?.id == "post-1")
+        #expect(response.value.includes != nil)
+        #expect(response.value.includes?.entries.first?.id == "linked-entry")
+        #expect(response.value.includes?.assets.isEmpty == true)
+
+        let url = try #require(transport.lastRequest?.url?.absoluteString)
+        #expect(url.contains("include=1"))
+    }
+
+    @Test func getDeliveryDecodesEntryWithoutIncludes() async throws {
+        let transport = MockTransport()
+        transport.enqueue(.raw(sampleEntryJSON(id: "abc")))
+        let client = makeTestClient(transport: transport)
+
+        let response = try await client.entries.getDelivery(id: "abc")
+        #expect(response.value.entry.id == "abc")
+        #expect(response.value.includes == nil)
+    }
+
+    @Test func getDeliveryDecodesIncludesWhenPresent() async throws {
+        let transport = MockTransport()
+        let body = """
+        {
+            "id": "post-1",
+            "contentModel": {"id": "cm-1", "apiId": "blogPost"},
+            "fields": {"slug": "p1"},
+            "createdAt": "\(nowISO())",
+            "updatedAt": "\(nowISO())",
+            "publishedAt": null,
+            "publishedVersion": null,
+            "firstPublishedAt": null,
+            "includes": {
+                "entries": [],
+                "assets": []
+            }
+        }
+        """
+        transport.enqueue(.raw(body))
+        let client = makeTestClient(transport: transport)
+
+        let response = try await client.entries.getDelivery(id: "post-1", include: 1)
+        #expect(response.value.entry.id == "post-1")
+        #expect(response.value.includes != nil)
     }
 
     // MARK: - Errors
@@ -287,7 +452,7 @@ struct EntryNamespaceTests {
         }
     }
 
-    @Test func rateLimitedMapsWithRetryAfter() async throws {
+    @Test func rateLimitedMapsWithNumericRetryAfter() async throws {
         let transport = MockTransport()
         transport.enqueue(
             .init(
@@ -305,6 +470,39 @@ struct EntryNamespaceTests {
             Issue.record("Expected rate limited error")
         } catch FormeError.rateLimited(let retry) {
             #expect(retry == 60)
+        } catch {
+            Issue.record("Wrong error: \(error)")
+        }
+    }
+
+    @Test func rateLimitedHandlesHttpDateRetryAfter() async throws {
+        // HTTP-date form per RFC 7231 §7.1.3. Use a date 30s in the future so
+        // the parsed retry interval falls in a positive bracket regardless of
+        // execution time slop.
+        let future = Date().addingTimeInterval(30)
+        let formatter = DateFormatter()
+        formatter.locale = Foundation.Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "GMT")
+        formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss zzz"
+        let httpDate = formatter.string(from: future)
+
+        let transport = MockTransport()
+        transport.enqueue(
+            .init(
+                statusCode: 429,
+                body: "{}".data(using: .utf8)!,
+                headers: ["Retry-After": httpDate]
+            )
+        )
+        let client = makeTestClient(transport: transport)
+
+        do {
+            _ = try await client.entries.get(id: "abc")
+            Issue.record("Expected rate limited error")
+        } catch FormeError.rateLimited(let retry) {
+            let parsed = try #require(retry)
+            // Allow generous slack for clock + scheduling jitter.
+            #expect(parsed > 0 && parsed <= 60)
         } catch {
             Issue.record("Wrong error: \(error)")
         }
