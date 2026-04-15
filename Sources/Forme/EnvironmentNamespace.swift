@@ -4,28 +4,31 @@ import Foundation
 public struct EnvironmentNamespace: Sendable {
     let client: FormeClient
 
-    private struct EnvelopeUnpaginated: Decodable {
-        let data: [Environment]
+    public func list() async throws -> FormeResponse<[Environment]> {
+        let response: FormeResponse<PaginatedList<Environment>> =
+            try await client.executor.get("/management/environments")
+        return response.map(\.items)
     }
 
-    public func list() async throws -> [Environment] {
-        let envelope: EnvelopeUnpaginated = try await client.executor.get("/management/environments")
-        return envelope.data
+    public func get(id: String) async throws -> FormeResponse<Environment> {
+        try await client.executor.get("/management/environments/\(encodePathComponent(id))")
     }
 
-    public func get(id: String) async throws -> Environment {
-        try await client.executor.get("/management/environments/\(id)")
-    }
-
-    public func create(_ input: CreateEnvironmentInput) async throws -> Environment {
+    public func create(_ input: CreateEnvironmentInput) async throws -> FormeResponse<Environment> {
         try await client.executor.post("/management/environments", body: input)
     }
 
-    public func update(id: String, _ input: UpdateEnvironmentInput) async throws -> Environment {
-        try await client.executor.put("/management/environments/\(id)", body: input)
+    public func update(
+        id: String,
+        _ input: UpdateEnvironmentInput
+    ) async throws -> FormeResponse<Environment> {
+        try await client.executor.put(
+            "/management/environments/\(encodePathComponent(id))",
+            body: input
+        )
     }
 
     public func delete(id: String) async throws {
-        try await client.executor.delete("/management/environments/\(id)")
+        try await client.executor.delete("/management/environments/\(encodePathComponent(id))")
     }
 }

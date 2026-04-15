@@ -63,7 +63,8 @@ public final class FormeClient: Sendable {
             baseURL: configuration.baseURL,
             apiKey: configuration.apiKey,
             transport: transport ?? URLSessionTransport(session: configuration.urlSession),
-            extraHeaders: configuration.extraHeaders
+            extraHeaders: configuration.extraHeaders,
+            timeoutSeconds: configuration.timeoutSeconds
         )
     }
 

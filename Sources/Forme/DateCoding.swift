@@ -9,15 +9,20 @@ import Foundation
 /// millisecond precision. The Forme API uses `timestamptz::text` in Postgres,
 /// which typically emits microsecond precision, so this shim is required.
 enum FormeDateCoding {
+    // `ISO8601DateFormatter` is not retroactively `Sendable`, but its
+    // parse/format methods are documented thread-safe once configured
+    // (it wraps an immutable `CFDateFormatter`). `nonisolated(unsafe)`
+    // tells the compiler "I have audited this; sharing is safe."
+
     /// ISO 8601 formatter for dates WITH fractional seconds (primary form).
-    static let withFractional: ISO8601DateFormatter = {
+    nonisolated(unsafe) static let withFractional: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter()
         f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return f
     }()
 
     /// ISO 8601 formatter for dates WITHOUT fractional seconds (fallback).
-    static let withoutFractional: ISO8601DateFormatter = {
+    nonisolated(unsafe) static let withoutFractional: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter()
         f.formatOptions = [.withInternetDateTime]
         return f

@@ -72,10 +72,10 @@ final class MockTransport: HTTPTransport, @unchecked Sendable {
     }
 
     func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
-        lock.lock()
-        _requests.append(request)
-        let response = _responseQueue.isEmpty ? _defaultResponse : _responseQueue.removeFirst()
-        lock.unlock()
+        // Wrap the lock acquisition in a non-async helper so Swift 6 strict
+        // concurrency doesn't reject the direct `NSLock.lock()` call from
+        // an async context.
+        let response = recordAndDequeue(request)
 
         let http = HTTPURLResponse(
             url: request.url!,
@@ -84,6 +84,13 @@ final class MockTransport: HTTPTransport, @unchecked Sendable {
             headerFields: response.headers
         )!
         return (response.body, http)
+    }
+
+    private func recordAndDequeue(_ request: URLRequest) -> CannedResponse {
+        lock.lock()
+        defer { lock.unlock() }
+        _requests.append(request)
+        return _responseQueue.isEmpty ? _defaultResponse : _responseQueue.removeFirst()
     }
 }
 
