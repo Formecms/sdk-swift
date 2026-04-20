@@ -55,6 +55,7 @@ public struct EntryActionDecisionResult: Sendable, Decodable {
 public struct AiUsageRateWindow: Sendable, Decodable {
     public let requestCount: Int
     public let effectiveCount: Int
+    public let limit: Int
     public let windowEnd: String
 }
 

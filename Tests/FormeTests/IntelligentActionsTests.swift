@@ -299,6 +299,7 @@ struct IntelligentActionsTests {
             "rateWindow": {
                 "requestCount": 15,
                 "effectiveCount": 15,
+                "limit": 60,
                 "windowEnd": "2026-04-20T12:01:00.000Z"
             }
         }
@@ -312,6 +313,7 @@ struct IntelligentActionsTests {
         #expect(response.value.monthly.approved == 30)
         #expect(response.value.monthly.tokensIn == 5000)
         #expect(response.value.rateWindow?.effectiveCount == 15)
+        #expect(response.value.rateWindow?.limit == 60)
 
         let request = try #require(transport.lastRequest)
         #expect(request.httpMethod == "GET")
