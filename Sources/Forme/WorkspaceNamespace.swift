@@ -16,4 +16,9 @@ public struct WorkspaceNamespace: Sendable {
             body: UpdateWorkspaceInput(name: name)
         )
     }
+
+    /// Get aggregated AI usage stats for the workspace.
+    public func aiUsage() async throws -> FormeResponse<AiUsageStats> {
+        try await client.executor.get("/management/workspace/ai-usage")
+    }
 }

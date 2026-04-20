@@ -112,6 +112,9 @@ public struct EntryNamespace: Sendable {
         )
     }
 
+    /// Intelligent Actions sub-namespace.
+    public var actions: EntryActionsNamespace { EntryActionsNamespace(client: client) }
+
     // MARK: - Delivery API
 
     /// List published entries (Delivery API).
