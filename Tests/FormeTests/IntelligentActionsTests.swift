@@ -289,18 +289,11 @@ struct IntelligentActionsTests {
         let transport = MockTransport()
         let json = """
         {
-            "monthly": {
-                "total": 42,
-                "approved": 30,
-                "discarded": 10,
-                "tokensIn": 5000,
-                "tokensOut": 2000
-            },
-            "rateWindow": {
-                "requestCount": 15,
-                "effectiveCount": 15,
-                "limit": 60,
-                "windowEnd": "2026-04-20T12:01:00.000Z"
+            "creditsUsed": 34,
+            "creditsLimit": 1000,
+            "resetsAt": "2026-05-01T00:00:00.000Z",
+            "breakdown": {
+                "rewrite": 34
             }
         }
         """
@@ -309,29 +302,24 @@ struct IntelligentActionsTests {
 
         let response = try await client.workspace.aiUsage()
 
-        #expect(response.value.monthly.total == 42)
-        #expect(response.value.monthly.approved == 30)
-        #expect(response.value.monthly.tokensIn == 5000)
-        #expect(response.value.rateWindow?.effectiveCount == 15)
-        #expect(response.value.rateWindow?.limit == 60)
+        #expect(response.value.creditsUsed == 34)
+        #expect(response.value.creditsLimit == 1000)
+        #expect(response.value.resetsAt == "2026-05-01T00:00:00.000Z")
+        #expect(response.value.breakdown["rewrite"] == 34)
 
         let request = try #require(transport.lastRequest)
         #expect(request.httpMethod == "GET")
         #expect(request.url?.absoluteString.contains("/management/workspace/ai-usage") == true)
     }
 
-    @Test func aiUsageNullRateWindow() async throws {
+    @Test func aiUsageEmptyWorkspace() async throws {
         let transport = MockTransport()
         let json = """
         {
-            "monthly": {
-                "total": 0,
-                "approved": 0,
-                "discarded": 0,
-                "tokensIn": 0,
-                "tokensOut": 0
-            },
-            "rateWindow": null
+            "creditsUsed": 0,
+            "creditsLimit": 1000,
+            "resetsAt": "2026-05-01T00:00:00.000Z",
+            "breakdown": {}
         }
         """
         transport.enqueue(.raw(json))
@@ -339,7 +327,7 @@ struct IntelligentActionsTests {
 
         let response = try await client.workspace.aiUsage()
 
-        #expect(response.value.monthly.total == 0)
-        #expect(response.value.rateWindow == nil)
+        #expect(response.value.creditsUsed == 0)
+        #expect(response.value.breakdown.isEmpty)
     }
 }

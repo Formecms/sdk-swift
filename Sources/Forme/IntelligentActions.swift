@@ -51,24 +51,10 @@ public struct EntryActionDecisionResult: Sendable, Decodable {
 
 // MARK: - AI Usage
 
-/// Rate window for the workspace's rolling request counter.
-public struct AiUsageRateWindow: Sendable, Decodable {
-    public let requestCount: Int
-    public let effectiveCount: Int
-    public let limit: Int
-    public let windowEnd: String
-}
-
-/// Aggregated AI usage stats for the workspace.
+/// Monthly credit usage stats for the workspace.
 public struct AiUsageStats: Sendable, Decodable {
-    public let monthly: MonthlyStats
-    public let rateWindow: AiUsageRateWindow?
-
-    public struct MonthlyStats: Sendable, Decodable {
-        public let total: Int
-        public let approved: Int
-        public let discarded: Int
-        public let tokensIn: Int
-        public let tokensOut: Int
-    }
+    public let creditsUsed: Int
+    public let creditsLimit: Int
+    public let resetsAt: String
+    public let breakdown: [String: Int]
 }
